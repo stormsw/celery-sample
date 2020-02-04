@@ -1,0 +1,53 @@
+version: "3"
+
+services: 
+  redis:
+    image: "redis:4.0.5-alpine"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - 6379:6379
+  rabbit:
+    image: "rabbitmq:3.8.2-alpine"
+    ports: 
+      - 15672:15672 #management port
+      - 5672:5672
+    environment: 
+      RABBITMQ_DEFAULT_USER: "rabbit"
+      RABBITMQ_DEFAULT_PASS: "rabbit"
+    volumes: 
+      - rabbit_vol:/var/lib/rabbitmq:rw
+  flower:  
+    image: mher/flower
+    environment: 
+      CELERY_BROKER_URL: "amqp://rabbit:rabbit@rabbit:5672//"
+      FLOWER_PORT: 8888
+      CELERY_RESULT_BACKEND: 'redis://redis:6379/0'
+    command: ["flower"]  
+    # ports:  
+    #   - 8888:8888
+    depends_on: 
+      - redis
+      - rabbit
+      - celery_worker
+  celery_worker:
+    image: celery_worker
+    build: workers/test_celery
+    depends_on:
+      - redis
+      - rabbit 
+    #command: celery -A test_celery worker --loglevel=info
+  celery_task:
+    image: celery_worker
+    command: python -m test_celery.run_tasks
+    depends_on: 
+      - celery_worker
+  celery_flower:
+    image: celery_worker
+    command: celery flower -A  test_celery.app --broker=amqp://rabbit:rabbit@rabbit:5672// --address=0.0.0.0 --port=5000
+    ports: 
+      - 8888:5000
+volumes: 
+  rabbit_vol:
+  redis-data:
